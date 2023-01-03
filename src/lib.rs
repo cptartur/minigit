@@ -26,7 +26,7 @@ impl Serializer {
         Serializer { base_dir }
     }
 
-    fn serialize(&self, serializable: &Vec<Box<dyn Serializable>>) {
+    fn serialize(&self, serializable: Vec<Box<&dyn Serializable>>) {
         for item in serializable {
             let SerializedItem { name, contents } = item.serialize();
 
@@ -130,9 +130,7 @@ impl Repository {
         let commit = Commit { message, version: self.version };
         self.commits.push(commit);
 
-        // self.tracked_files.add(file);
-        let val = self.tracked_files.borrow_mut();
-        val.add(file);
+        self.tracked_files.add(file);
     }
 
     pub fn remove(&mut self, name: &str) {
@@ -143,12 +141,11 @@ impl Repository {
 
     pub fn checkout(version: u32) {}
 
-    pub fn serialize(self) {
-        let mut serializable: Vec<Box<dyn Serializable>> = vec![];
-        serializable.push(Box::new(self.tracked_files));
+    pub fn serialize(&self) {
+        let serializable: Vec<Box<&dyn Serializable>> = vec![Box::new(&self.tracked_files)];
 
         let serializer = Serializer::create(self.base_dir.clone());
-        serializer.serialize(&serializable);
+        serializer.serialize(serializable);
     }
 
     fn construct_path(base_path: &PathBuf, name: &str) -> PathBuf {
