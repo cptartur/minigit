@@ -1,50 +1,54 @@
 use std::env;
+use std::error::Error;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 
-struct SerializedItem {
-    name: String,
-    contents: String,
-}
 
-trait Serializable {
-    fn serialize(&self) -> SerializedItem;
-}
-
-struct Serializer {
+struct JsonSerializer {
     base_dir: PathBuf,
 }
 
-impl Serializer {
-    fn create(base_dir: PathBuf) -> Serializer {
-        Serializer { base_dir }
+type JsonSerializerResult<T> = Result<T, Box<dyn Error>>;
+
+impl JsonSerializer {
+    fn create(base_dir: &PathBuf) -> JsonSerializer {
+        let base_dir = base_dir.clone();
+        JsonSerializer { base_dir }
     }
 
-    fn serialize(&self, serializable: Vec<Box<&dyn Serializable>>) {
-        for item in serializable {
-            let SerializedItem { name, contents } = item.serialize();
+    fn serialize<S>(&self, name: &str, serializable: &S) where S: Serialize {
+        let mut path = self.base_dir.clone();
+        path.push(name);
 
-            let mut path = self.base_dir.clone();
-            path.push(name);
+        let contents = serde_json::to_string(&serializable).unwrap();
+        let mut file = File::create(path).unwrap();
+        write!(file, "{}", contents).unwrap();
+    }
 
-            let mut file = File::create(path).expect("Failed to create a file.");
-            write!(file, "{}", contents).expect("Failed to write to a file.");
-        }
+    fn deserialize<T>(&self, name: &str) -> JsonSerializerResult<T> where T: DeserializeOwned {
+        let mut path = self.base_dir.clone();
+        path.push(name);
+
+        let contents = fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&contents).unwrap())
     }
 }
 
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, PartialEq)]
 pub struct RepositoryFile {
     name: String,
     path: PathBuf,
 }
 
 impl RepositoryFile {
-    fn create(path: PathBuf) -> RepositoryFile {
+    fn create(path: &PathBuf) -> RepositoryFile {
+        println!("{:?}", path);
         if !path.exists() {
             panic!("Invalid file path");
         }
@@ -55,10 +59,11 @@ impl RepositoryFile {
 
         let name = path.file_name().unwrap().to_str().unwrap().to_string();
 
-        RepositoryFile { name, path }
+        RepositoryFile { name, path: path.clone() }
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct TrackedFiles {
     files: Vec<RepositoryFile>,
 }
@@ -69,8 +74,12 @@ impl TrackedFiles {
         TrackedFiles { files }
     }
 
-    fn add(&mut self, file: RepositoryFile) {
-        self.files.push(file);
+    fn add(&mut self, file: RepositoryFile) -> Result<(), &'static str> {
+        if self.files.contains(&file) {
+            return Err("File is already tracked");
+        }
+
+        Ok(self.files.push(file))
     }
 
     fn remove(&mut self, name: &str) {
@@ -82,22 +91,16 @@ impl TrackedFiles {
     }
 }
 
-impl Serializable for TrackedFiles {
-    fn serialize(&self) -> SerializedItem {
-        let contents = serde_json::to_string(&self.files).unwrap();
-        let name = "tracked_files_serialized.txt".to_string();
-        SerializedItem { name, contents }
-    }
-}
-
+#[derive(Serialize, Deserialize)]
 struct Commit {
     message: String,
     version: u32,
+    contents: String,
 }
 
 impl Commit {
-    fn create(message: &str, version: u32) -> Commit {
-        Commit { message: message.to_string(), version }
+    fn create(message: &str, version: u32, contents: &str) -> Commit {
+        Commit { message: message.to_string(), version, contents: contents.to_string() }
     }
 }
 
@@ -109,44 +112,97 @@ pub struct Repository {
 }
 
 impl Repository {
-    pub fn new() -> Repository {
-        let base_dir = env::current_dir().expect("Failed to get the current working directory");
+    pub fn create() -> Result<Repository, Box<dyn Error>> {
+        let mut base_dir = env::current_dir().expect("Failed to get the current working directory");
+        base_dir.push(".minigit");
+        if base_dir.exists() {
+            return Err("Directory for minigit already exits".into());
+        }
+        fs::create_dir(&base_dir)?;
+
         let tracked_files = TrackedFiles::new();
         let commits = vec![];
         let version = 0;
 
-        Repository { base_dir, tracked_files, commits, version }
+        Ok(Repository { base_dir, tracked_files, commits, version })
+    }
+
+    pub fn load() -> Result<Repository, Box<dyn Error>> {
+        let mut base_dir = env::current_dir().expect("Failed to get the current working directory");
+        base_dir.push(".minigit");
+        if !base_dir.exists() {
+            return Err("Directory for minigit does not exit".into());
+        }
+
+        let serializer = JsonSerializer::create(&base_dir);
+        let tracked_files: TrackedFiles = serializer.deserialize("tracked_files").expect("Failed to load tracked files");
+
+        let mut commits = vec![];
+        let paths = fs::read_dir(&base_dir).unwrap();
+        for path in paths {
+            let path = path.unwrap().path();
+            let name = &path.file_name().unwrap().to_str().unwrap();
+            if name.starts_with("COMMIT") {
+                let commit: Commit = serializer.deserialize(name).unwrap();
+                commits.push(commit);
+            }
+        }
+
+        let version: u32 = serializer.deserialize("VERSION").unwrap();
+
+        Ok(Repository { base_dir, tracked_files, commits, version })
     }
 
     pub fn add(&mut self, name: &str, commit_message: Option<&str>) {
         let path = Self::construct_path(&self.base_dir, name);
-        let file = RepositoryFile::create(path);
-        let name = file.name.as_str();
+        let file = RepositoryFile::create(&path);
 
-        let message = commit_message.unwrap_or(format!("Adding a file {name}").as_str()).to_string();
-        let commit = Commit { message, version: self.version };
-        self.commits.push(commit);
+        self.commit_file(&file, commit_message.unwrap_or(format!("Adding a file {}", &file.name).as_str()));
+        self.tracked_files.add(file).unwrap();
+    }
 
-        self.tracked_files.add(file);
+    fn read_file_contents(file: &RepositoryFile) -> String {
+        fs::read_to_string(&file.path).unwrap()
     }
 
     pub fn remove(&mut self, name: &str) {
         self.tracked_files.remove(name);
     }
 
-    pub fn commit(name: &str) {}
+    fn commit_file(&mut self, file: &RepositoryFile, commit_message: &str) {
+        let contents = Self::read_file_contents(&file);
+
+        let message = commit_message;
+        self.version += 1;
+        let commit = Commit { message: message.to_string(), version: self.version, contents };
+
+        self.commits.push(commit);
+    }
+
+    pub fn commit(&mut self, name: &str, commit_message: Option<&str>) {
+        let path = Self::construct_path(&self.base_dir, name);
+        let file = RepositoryFile::create(&path);
+
+        self.commit_file(&file, commit_message.unwrap_or(format!("Committing a file {}", &file.name).as_str()))
+    }
 
     pub fn checkout(version: u32) {}
 
-    pub fn serialize(&self) {
-        let serializable: Vec<Box<&dyn Serializable>> = vec![Box::new(&self.tracked_files)];
+    pub fn save(&self) {
+        let serializer = JsonSerializer::create(&self.base_dir);
 
-        let serializer = Serializer::create(self.base_dir.clone());
-        serializer.serialize(serializable);
+        serializer.serialize("tracked_files", &self.tracked_files);
+
+        serializer.serialize("VERSION", &self.version);
+
+        for commit in &self.commits {
+            let file_name = format!("COMMIT_{}", &commit.version);
+            serializer.serialize(&file_name, commit);
+        }
     }
 
     fn construct_path(base_path: &PathBuf, name: &str) -> PathBuf {
-        let mut path = base_path.clone();
+        let mut path = base_path.clone().parent().unwrap().to_path_buf();
         path.push(name);
 
         path

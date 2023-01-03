@@ -1,4 +1,3 @@
-use std::panic::resume_unwind;
 use clap::{Parser, Subcommand};
 use minigit::Repository;
 
@@ -24,17 +23,23 @@ fn main() {
     match cli.command {
         Commands::Init => {
             println!("Initializing minigit...");
-            let repository = Repository::new();
-            repository.serialize();
+            let repository = Repository::create().unwrap();
+            repository.save();
         }
         Commands::Add { name } => {
             println!("Adding file {name}");
+            let mut repository = Repository::load().unwrap();
+            repository.add(&name, None);
+            repository.save();
         }
         Commands::Remove { name } => {
             println!("Removing file {name}");
         }
         Commands::Commit { name } => {
             println!("Commiting file {name}");
+            let mut repository = Repository::load().unwrap();
+            repository.commit(&name, None);
+            repository.save();
         }
         Commands::Checkout { version } => {
             println!("Restoring to version {version}");
