@@ -1,12 +1,9 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use std::path::{PathBuf};
-use std::rc::Rc;
+use std::path::PathBuf;
 
-use serde::{Serialize};
+use serde::Serialize;
 
 struct SerializedItem {
     name: String,
