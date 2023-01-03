@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
-
 struct JsonSerializer {
     base_dir: PathBuf,
 }
@@ -96,11 +95,12 @@ struct Commit {
     message: String,
     version: u32,
     contents: String,
+    path: PathBuf,
 }
 
 impl Commit {
-    fn create(message: &str, version: u32, contents: &str) -> Commit {
-        Commit { message: message.to_string(), version, contents: contents.to_string() }
+    fn create(message: &str, version: u32, contents: &str, path: &PathBuf) -> Commit {
+        Commit { message: message.to_string(), version, contents: contents.to_string(), path: path.clone() }
     }
 }
 
@@ -174,7 +174,7 @@ impl Repository {
 
         let message = commit_message;
         self.version += 1;
-        let commit = Commit { message: message.to_string(), version: self.version, contents };
+        let commit = Commit::create(message, self.version, &contents, &file.path);
 
         self.commits.push(commit);
     }
@@ -186,7 +186,14 @@ impl Repository {
         self.commit_file(&file, commit_message.unwrap_or(format!("Committing a file {}", &file.name).as_str()))
     }
 
-    pub fn checkout(version: u32) {}
+    pub fn checkout(self, version: u32) {
+        let commit = self.commits.iter().find(|commit| commit.version == version).expect("Commit not found for version");
+        let contents = &commit.contents;
+        let path = &commit.path;
+
+        let mut file = File::create(path).unwrap();
+        write!(file, "{}", contents).expect("File to write to a file");
+    }
 
     pub fn save(&self) {
         let serializer = JsonSerializer::create(&self.base_dir);

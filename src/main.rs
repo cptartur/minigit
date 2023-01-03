@@ -43,6 +43,8 @@ fn main() {
         }
         Commands::Checkout { version } => {
             println!("Restoring to version {version}");
+            let mut repository = Repository::load().unwrap();
+            repository.checkout(version);
         }
         Commands::History { lines } => {
             match lines {
