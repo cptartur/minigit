@@ -34,6 +34,9 @@ fn main() {
         }
         Commands::Remove { name } => {
             println!("Removing file {name}");
+            let mut repository = Repository::load().unwrap();
+            repository.remove(&name);
+            repository.save();
         }
         Commands::Commit { name } => {
             println!("Commiting file {name}");

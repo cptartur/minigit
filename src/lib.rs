@@ -39,7 +39,7 @@ impl JsonSerializer {
 }
 
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
 pub struct RepositoryFile {
     name: String,
     path: PathBuf,
@@ -87,6 +87,10 @@ impl TrackedFiles {
         } else {
             panic!("File not found.")
         }
+    }
+
+    fn is_tracked(&self, file: &RepositoryFile) -> bool {
+        self.files.contains(file)
     }
 }
 
@@ -157,8 +161,8 @@ impl Repository {
         let path = Self::construct_path(&self.base_dir, name);
         let file = RepositoryFile::create(&path);
 
-        self.commit_file(&file, commit_message.unwrap_or(format!("Adding a file {}", &file.name).as_str()));
-        self.tracked_files.add(file).unwrap();
+        self.tracked_files.add(file.clone()).unwrap();
+        self.commit_file(&file, commit_message.unwrap_or(format!("Adding a file {}", &file.name).as_str())).unwrap();
     }
 
     fn read_file_contents(file: &RepositoryFile) -> String {
@@ -169,21 +173,25 @@ impl Repository {
         self.tracked_files.remove(name);
     }
 
-    fn commit_file(&mut self, file: &RepositoryFile, commit_message: &str) {
-        let contents = Self::read_file_contents(&file);
+    fn commit_file(&mut self, file: &RepositoryFile, commit_message: &str) -> Result<(), &'static str> {
+        if !self.tracked_files.is_tracked(file) {
+            return Err("File is not tracked");
+        }
+
+        let contents = Self::read_file_contents(file);
 
         let message = commit_message;
         self.version += 1;
         let commit = Commit::create(message, self.version, &contents, &file.path);
 
-        self.commits.push(commit);
+        Ok(self.commits.push(commit))
     }
 
     pub fn commit(&mut self, name: &str, commit_message: Option<&str>) {
         let path = Self::construct_path(&self.base_dir, name);
         let file = RepositoryFile::create(&path);
 
-        self.commit_file(&file, commit_message.unwrap_or(format!("Committing a file {}", &file.name).as_str()))
+        self.commit_file(&file, commit_message.unwrap_or(format!("Committing a file {}", &file.name).as_str())).unwrap();
     }
 
     pub fn checkout(self, version: u32) {
