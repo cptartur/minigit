@@ -53,6 +53,18 @@ pub struct Repository {
     version: u32,
 }
 
+macro_rules! print_history {
+    ($version:expr,$commit:expr,$msg:expr) => {{
+        let files_tracked: Vec<String> =
+            $commit.files.iter().map(|f| f.file.name.clone()).collect();
+
+        println!(
+            "Version {}. \nCommit message: {}. \nFiles tracked in version: {:?}",
+            $version, $msg, files_tracked
+        );
+    }};
+}
+
 impl Repository {
     pub fn create() -> Result<Repository, Box<dyn Error>> {
         let mut base_dir = env::current_dir().expect("Failed to get the current working directory");
@@ -126,14 +138,17 @@ impl Repository {
     }
 
     pub fn commit(&mut self, message: Option<&str>) {
-        let mut commit_path = self
-            .base_dir
-            .clone();
+        let mut commit_path = self.base_dir.clone();
         commit_path.push(Path::new(&self.version.to_string()));
 
         self.version += 1;
         let files = &self.tracked_files;
-        let commit = Commit::create(message.unwrap_or("Committed"), self.version, files, &commit_path);
+        let commit = Commit::create(
+            message.unwrap_or("Committed"),
+            self.version,
+            files,
+            &commit_path,
+        );
         self.commits.push(commit);
     }
 
@@ -141,7 +156,11 @@ impl Repository {
         match n_versions {
             None => self.print_version(self.version),
             Some(versions) => {
-                let start = self.version.checked_sub(versions).expect("Too many versions requested") + 1;
+                let start = self
+                    .version
+                    .checked_sub(versions)
+                    .expect("Too many versions requested")
+                    + 1;
                 for version in start..=self.version {
                     self.print_version(version);
                 }
@@ -159,9 +178,7 @@ impl Repository {
             .find(|commit| commit.version == version)
             .expect("Commit not found for version");
 
-        let files_tracked: Vec<String> = commit.files.iter().map(|f| f.file.name.clone()).collect();
-
-        println!("Version {version}. \nCommit message: {}. \nFiles tracked in version: {:?}", commit.message, files_tracked)
+        print_history!(self.version, commit, "abc")
     }
 
     pub fn checkout(self, version: u32) {
