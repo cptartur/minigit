@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use minigit::Repository;
+use minigit::repository::Repository;
 
 #[derive(Parser)]
 struct Cli {
