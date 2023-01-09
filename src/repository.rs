@@ -4,24 +4,44 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
+
+#[derive(Serialize, Deserialize)]
+struct CommittedFile {
+    file: RepositoryFile,
+    contents: String,
+    path: PathBuf,
+}
 
 #[derive(Serialize, Deserialize)]
 struct Commit {
     message: String,
     version: u32,
-    contents: String,
-    path: PathBuf,
+    files: Vec<CommittedFile>,
 }
 
 impl Commit {
-    fn create(message: &str, version: u32, contents: &str, path: &PathBuf) -> Commit {
+    fn create(
+        message: &str,
+        version: u32,
+        files: &Vec<RepositoryFile>,
+        commit_path: &PathBuf,
+    ) -> Commit {
+        let commit_path = commit_path.clone();
+        let files = files
+            .iter()
+            .map(|file| CommittedFile {
+                file: file.clone(),
+                contents: Repository::read_file_contents(file),
+                path: commit_path.clone(),
+            })
+            .collect();
+
         Commit {
             message: message.to_string(),
             version,
-            contents: contents.to_string(),
-            path: path.clone(),
+            files,
         }
     }
 }
@@ -63,21 +83,23 @@ impl Repository {
 
         let serializer = JsonSerializer::create(&base_dir);
         let tracked_files: TrackedFiles = serializer
-            .deserialize("tracked_files")
+            .deserialize("tracked_files", None)
             .expect("Failed to load tracked files");
 
         let mut commits = vec![];
         let paths = fs::read_dir(&base_dir).unwrap();
         for path in paths {
             let path = path.unwrap().path();
-            let name = &path.file_name().unwrap().to_str().unwrap();
-            if name.starts_with("COMMIT") {
-                let commit: Commit = serializer.deserialize(name).unwrap();
-                commits.push(commit);
+            if path.is_dir() {
+                let name = path.file_name().unwrap().to_str().unwrap();
+                if name.starts_with("COMMIT") {
+                    let commit: Commit = serializer.deserialize("meta", Some(&path)).unwrap();
+                    commits.push(commit);
+                }
             }
         }
 
-        let version: u32 = serializer.deserialize("VERSION").unwrap();
+        let version: u32 = serializer.deserialize("VERSION", None).unwrap();
 
         Ok(Repository {
             base_dir,
@@ -92,11 +114,7 @@ impl Repository {
         let file = RepositoryFile::create(&path);
 
         self.tracked_files.add(file.clone()).unwrap();
-        self.commit_file(
-            &file,
-            commit_message.unwrap_or(format!("Adding a file {}", &file.name).as_str()),
-        )
-            .unwrap();
+        self.commit(commit_message);
     }
 
     fn read_file_contents(file: &RepositoryFile) -> String {
@@ -107,33 +125,16 @@ impl Repository {
         self.tracked_files.remove(name);
     }
 
-    fn commit_file(
-        &mut self,
-        file: &RepositoryFile,
-        commit_message: &str,
-    ) -> Result<(), &'static str> {
-        if !self.tracked_files.is_tracked(file) {
-            return Err("File is not tracked");
-        }
+    pub fn commit(&mut self, message: Option<&str>) {
+        let mut commit_path = self
+            .base_dir
+            .clone();
+        commit_path.push(Path::new(&self.version.to_string()));
 
-        let contents = Self::read_file_contents(file);
-
-        let message = commit_message;
         self.version += 1;
-        let commit = Commit::create(message, self.version, &contents, &file.path);
-
-        Ok(self.commits.push(commit))
-    }
-
-    pub fn commit(&mut self, name: &str, commit_message: Option<&str>) {
-        let path = Self::construct_path(&self.base_dir, name);
-        let file = RepositoryFile::create(&path);
-
-        self.commit_file(
-            &file,
-            commit_message.unwrap_or(format!("Committing a file {}", &file.name).as_str()),
-        )
-            .unwrap();
+        let files = &self.tracked_files;
+        let commit = Commit::create(message.unwrap_or("Committed"), self.version, files, &commit_path);
+        self.commits.push(commit);
     }
 
     pub fn checkout(self, version: u32) {
@@ -142,23 +143,44 @@ impl Repository {
             .iter()
             .find(|commit| commit.version == version)
             .expect("Commit not found for version");
-        let contents = &commit.contents;
-        let path = &commit.path;
 
-        let mut file = File::create(path).unwrap();
-        write!(file, "{}", contents).expect("File to write to a file");
+        Self::checkout_commit(commit);
+    }
+
+    fn checkout_commit(commit: &Commit) {
+        for committed_file in &commit.files {
+            let mut file = File::create(&committed_file.file.path).unwrap();
+            let contents = &committed_file.contents;
+            write!(file, "{}", contents).expect("Failed to write to a file");
+        }
     }
 
     pub fn save(&self) {
         let serializer = JsonSerializer::create(&self.base_dir);
 
-        serializer.serialize("tracked_files", &self.tracked_files);
+        serializer.serialize("tracked_files", &self.tracked_files, None);
 
-        serializer.serialize("VERSION", &self.version);
+        serializer.serialize("VERSION", &self.version, None);
 
         for commit in &self.commits {
-            let file_name = format!("COMMIT_{}", &commit.version);
-            serializer.serialize(&file_name, commit);
+            let dir_name = format!("COMMIT_{}", &commit.version);
+
+            let mut dir = self.base_dir.clone();
+            dir.push(dir_name);
+
+            if dir.exists() {
+                continue;
+            }
+
+            fs::create_dir(&dir).expect("Failed to create commit directory");
+
+            for committed_file in &commit.files {
+                let file_name = &committed_file.file.name;
+                serializer.serialize(file_name, committed_file, Some(&dir));
+            }
+
+            let name = "meta";
+            serializer.serialize(name, commit, Some(&dir));
         }
     }
 

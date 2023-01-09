@@ -1,3 +1,4 @@
+use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -57,4 +58,18 @@ impl TrackedFiles {
 #[derive(Serialize, Deserialize)]
 pub struct TrackedFiles {
     files: Vec<RepositoryFile>,
+}
+
+impl Deref for TrackedFiles {
+    type Target = Vec<RepositoryFile>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.files
+    }
+}
+
+impl DerefMut for TrackedFiles {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.files
+    }
 }

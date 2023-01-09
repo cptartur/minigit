@@ -41,7 +41,7 @@ fn main() {
         Commands::Commit { name } => {
             println!("Commiting file {name}");
             let mut repository = Repository::load().unwrap();
-            repository.commit(&name, None);
+            repository.commit(Some(&name));
             repository.save();
         }
         Commands::Checkout { version } => {
