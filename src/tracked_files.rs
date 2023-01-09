@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct RepositoryFile {
     pub(crate) name: String,
     pub(crate) path: PathBuf,

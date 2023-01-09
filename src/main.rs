@@ -50,10 +50,8 @@ fn main() {
             repository.checkout(version);
         }
         Commands::History { lines } => {
-            match lines {
-                Some(lines) => println!("Printing last {lines} lines of history"),
-                None => println!("Printing history")
-            }
+            let repository = Repository::load().unwrap();
+            repository.history(lines);
         }
     }
 }

@@ -6,8 +6,9 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
+use std::fmt::{Display, Formatter};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct CommittedFile {
     file: RepositoryFile,
     contents: String,
@@ -135,6 +136,33 @@ impl Repository {
         let files = &self.tracked_files;
         let commit = Commit::create(message.unwrap_or("Committed"), self.version, files, &commit_path);
         self.commits.push(commit);
+    }
+
+    pub fn history(&self, n_versions: Option<u32>) {
+        match n_versions {
+            None => self.print_version(self.version),
+            Some(versions) => {
+                let start = self.version.checked_sub(versions).expect("Too many versions requested") + 1;
+                for version in start..=self.version {
+                    self.print_version(version);
+                }
+            }
+        }
+    }
+
+    fn print_version(&self, version: u32) {
+        if version > self.version {
+            println!("Incorrect version provided");
+        }
+        let commit = self
+            .commits
+            .iter()
+            .find(|commit| commit.version == version)
+            .expect("Commit not found for version");
+
+        let files_tracked: Vec<String> = commit.files.iter().map(|f| f.file.name.clone()).collect();
+
+        println!("Version {version}. \nCommit message: {}. \nFiles tracked in version: {:?}", commit.message, files_tracked)
     }
 
     pub fn checkout(self, version: u32) {
