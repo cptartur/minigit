@@ -49,10 +49,6 @@ impl TrackedFiles {
             panic!("File not found.")
         }
     }
-
-    pub(crate) fn is_tracked(&self, file: &RepositoryFile) -> bool {
-        self.files.contains(file)
-    }
 }
 
 #[derive(Serialize, Deserialize)]

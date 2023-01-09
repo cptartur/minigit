@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
-use std::fmt::{Display, Formatter};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct CommittedFile {

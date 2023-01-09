@@ -39,14 +39,14 @@ fn main() {
             repository.save();
         }
         Commands::Commit { name } => {
-            println!("Commiting file {name}");
+            println!("Committing file {name}");
             let mut repository = Repository::load().unwrap();
             repository.commit(Some(&name));
             repository.save();
         }
         Commands::Checkout { version } => {
             println!("Restoring to version {version}");
-            let mut repository = Repository::load().unwrap();
+            let repository = Repository::load().unwrap();
             repository.checkout(version);
         }
         Commands::History { lines } => {
