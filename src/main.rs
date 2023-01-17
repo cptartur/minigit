@@ -12,7 +12,7 @@ enum Commands {
     Init,
     Add { name: String },
     Remove { name: String },
-    Commit { name: String },
+    Commit { message: String },
     Checkout { version: u32 },
     History { lines: Option<u32> },
 }
@@ -38,10 +38,10 @@ fn main() {
             repository.remove(&name);
             repository.save();
         }
-        Commands::Commit { name } => {
-            println!("Committing file {name}");
+        Commands::Commit { message } => {
+            println!("Committing with message {message}");
             let mut repository = Repository::load().unwrap();
-            repository.commit(Some(&name));
+            repository.commit(Some(&message));
             repository.save();
         }
         Commands::Checkout { version } => {
