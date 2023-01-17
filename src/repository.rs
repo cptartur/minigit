@@ -54,13 +54,14 @@ pub struct Repository {
 }
 
 macro_rules! print_history {
-    ($version:expr,$commit:expr,$msg:expr) => {{
+    ($version:expr,$commit:expr) => {{
         let files_tracked: Vec<String> =
             $commit.files.iter().map(|f| f.file.name.clone()).collect();
+        let message = &$commit.message;
 
         println!(
             "Version {}. \nCommit message: {}. \nFiles tracked in version: {:?}",
-            $version, $msg, files_tracked
+            $version, message, files_tracked
         );
     }};
 }
@@ -179,7 +180,7 @@ impl Repository {
             .find(|commit| commit.version == version)
             .expect("Commit not found for version");
 
-        print_history!(self.version, commit, "abc")
+        print_history!(&commit.version, commit)
     }
 
     pub fn checkout(self, version: u32) {
