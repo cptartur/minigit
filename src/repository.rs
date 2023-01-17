@@ -1,5 +1,5 @@
 use crate::json::JsonSerializer;
-use crate::tracked_files::{RepositoryFile, TrackedFiles};
+use crate::tracked_files::{FilesTracker, RepositoryFile, TrackedFiles};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs::File;
@@ -48,7 +48,7 @@ impl Commit {
 
 pub struct Repository {
     base_dir: PathBuf,
-    tracked_files: TrackedFiles,
+    tracked_files: Box<dyn FilesTracker>,
     commits: Vec<Commit>,
     version: u32,
 }
@@ -74,7 +74,7 @@ impl Repository {
         }
         fs::create_dir(&base_dir)?;
 
-        let tracked_files = TrackedFiles::new();
+        let tracked_files = Box::new(TrackedFiles::new());
         let commits = vec![];
         let version = 0;
 
@@ -94,9 +94,10 @@ impl Repository {
         }
 
         let serializer = JsonSerializer::create(&base_dir);
-        let tracked_files: TrackedFiles = serializer
+        let files: Vec<RepositoryFile> = serializer
             .deserialize("tracked_files", None)
             .expect("Failed to load tracked files");
+        let tracked_files = Box::new(TrackedFiles::create(files));
 
         let mut commits = vec![];
         let paths = fs::read_dir(&base_dir).unwrap();
@@ -146,7 +147,7 @@ impl Repository {
         let commit = Commit::create(
             message.unwrap_or("Committed"),
             self.version,
-            files,
+            files.tracked_files(),
             &commit_path,
         );
         self.commits.push(commit);
@@ -202,7 +203,7 @@ impl Repository {
     pub fn save(&self) {
         let serializer = JsonSerializer::create(&self.base_dir);
 
-        serializer.serialize("tracked_files", &self.tracked_files, None);
+        serializer.serialize("tracked_files", &self.tracked_files.tracked_files(), None);
 
         serializer.serialize("VERSION", &self.version, None);
 

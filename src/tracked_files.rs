@@ -33,22 +33,39 @@ impl TrackedFiles {
         let files = vec![];
         TrackedFiles { files }
     }
+}
 
-    pub(crate) fn add(&mut self, file: RepositoryFile) -> Result<(), &'static str> {
+impl FilesTracker for TrackedFiles {
+    fn create(files: Vec<RepositoryFile>) -> Self where Self: Sized {
+        let files = files.clone();
+        TrackedFiles { files }
+    }
+
+    fn add(&mut self, file: RepositoryFile) -> Result<(), &'static str> {
         if self.files.contains(&file) {
             return Err("File is already tracked");
         }
 
         Ok(self.files.push(file))
     }
-
-    pub(crate) fn remove(&mut self, name: &str) {
+    fn remove(&mut self, name: &str) {
         if let Some(index) = self.files.iter().position(|file| file.name == name) {
             self.files.remove(index);
         } else {
             panic!("File not found.")
         }
     }
+
+    fn tracked_files(&self) -> &Vec<RepositoryFile> {
+        self
+    }
+}
+
+pub(crate) trait FilesTracker {
+    fn create(files: Vec<RepositoryFile>) -> Self where Self: Sized;
+    fn add(&mut self, file: RepositoryFile) -> Result<(), &'static str>;
+    fn remove(&mut self, name: &str);
+    fn tracked_files(&self) -> &Vec<RepositoryFile>;
 }
 
 #[derive(Serialize, Deserialize)]
@@ -61,11 +78,5 @@ impl Deref for TrackedFiles {
 
     fn deref(&self) -> &Self::Target {
         &self.files
-    }
-}
-
-impl DerefMut for TrackedFiles {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.files
     }
 }
