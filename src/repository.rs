@@ -128,7 +128,7 @@ impl Repository {
         let file = RepositoryFile::create(&path);
 
         self.tracked_files.add(file.clone()).unwrap();
-        self.commit(commit_message);
+        self.commit(Some(commit_message.unwrap_or("Add file")));
     }
 
     fn read_file_contents(file: &RepositoryFile) -> String {
@@ -146,7 +146,7 @@ impl Repository {
         self.version += 1;
         let files = &self.tracked_files;
         let commit = Commit::create(
-            message.unwrap_or("Committed"),
+            message.unwrap_or("Commit"),
             self.version,
             files.tracked_files(),
             &commit_path,
